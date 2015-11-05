@@ -1,0 +1,39 @@
+#!/bin/bash
+
+yum update -y
+yum install -y yum-cron-security
+# install cloudwatch logs
+yum install -y perl-DateTime perl-Sys-Syslog perl-LWP-Protocol-https awslogs
+
+# ROOT Volume Resize
+resize2fs /dev/xvda1
+
+# for JST setting
+cp /usr/share/zoneinfo/Japan /etc/localtime
+echo "LANG=ja_JP.UTF-8" > /etc/sysconfig/i18n
+
+# cloudwatch custom metrics
+wget http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -P /opt/aws
+cd /opt/aws/
+unzip CloudWatchMonitoringScripts-1.2.1.zip
+rm -f CloudWatchMonitoringScripts-1.2.1.zip
+(crontab -l; echo "*/5 * * * * /opt/aws/aws-scripts-mon/mon-put-instance-data.pl --mem-util --mem-used --mem-avail --disk-space-util --disk-path=/ --from-cron") | crontab -
+
+# cloudwatch logs
+sed -i 's/us-east-1/ap-northeast-1/g' /etc/awslogs/awscli.conf
+cat << _awslogs_ >> /etc/awslogs/awslogs.conf
+
+[/var/log/secure]
+log_group_name = /var/log/secure
+log_stream_name = {instance_id}
+datetime_format = %b %d %H:%M:%S
+time_zone = LOCAL
+file = /var/log/secure
+initial_position = start_of_file
+buffer_duration = 5000
+encoding = utf-8
+_awslogs_
+
+# service start
+service awslogs start
+chkconfig awslogs on
